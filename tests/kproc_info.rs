@@ -29,6 +29,12 @@ fn kproc_info_self() {
     let info = kproc_info(me).expect("kproc_info for self should succeed");
     assert_eq!(info.pid, me);
     assert!(!info.comm.is_empty(), "self comm should not be empty");
+    // The test process always has a parent, so a correctly-read `eproc` layout
+    // yields a non-zero ppid. (A wrong struct layout typically reads this as 0.)
+    assert!(info.ppid > 0, "self should have a parent, got ppid {}", info.ppid);
+    // Real UID should match what the OS reports for this process.
+    let expected_uid = unsafe { libc::getuid() };
+    assert_eq!(info.ruid, expected_uid, "ruid should match getuid()");
 }
 
 #[test]

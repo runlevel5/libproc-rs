@@ -220,3 +220,51 @@ fn c_chars_to_string(buf: &[i8]) -> String {
         .collect();
     String::from_utf8_lossy(&bytes).into_owned()
 }
+
+#[cfg(test)]
+mod layout_tests {
+    use super::{Itimerval, Timeval};
+    use std::mem::{align_of, offset_of, size_of};
+
+    // The mirrored `Timeval` / `Itimerval` must match the system's `struct timeval`
+    // / `struct itimerval` exactly, otherwise every field after `p_un` / `p_realtimer`
+    // in `extern_proc` is read at the wrong offset and `sysctl` results are garbage.
+    // `libc` exposes these two types on macOS (unlike `kinfo_proc`), so we use them
+    // as the authoritative reference.
+
+    #[test]
+    fn timeval_matches_libc() {
+        assert_eq!(
+            size_of::<Timeval>(),
+            size_of::<libc::timeval>(),
+            "Timeval size must match libc::timeval"
+        );
+        assert_eq!(
+            align_of::<Timeval>(),
+            align_of::<libc::timeval>(),
+            "Timeval alignment must match libc::timeval"
+        );
+        assert_eq!(offset_of!(Timeval, tv_sec), 0);
+        assert_eq!(
+            offset_of!(Timeval, tv_usec),
+            size_of::<libc::time_t>(),
+            "tv_usec must follow the full-width tv_sec"
+        );
+    }
+
+    #[test]
+    fn itimerval_matches_libc() {
+        assert_eq!(
+            size_of::<Itimerval>(),
+            size_of::<libc::itimerval>(),
+            "Itimerval size must match libc::itimerval"
+        );
+        assert_eq!(align_of::<Itimerval>(), align_of::<libc::itimerval>());
+        assert_eq!(offset_of!(Itimerval, it_interval), 0);
+        assert_eq!(
+            offset_of!(Itimerval, it_value),
+            size_of::<Timeval>(),
+            "it_value must follow it_interval"
+        );
+    }
+}

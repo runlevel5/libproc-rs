@@ -561,6 +561,35 @@ pub fn name(pid: i32) -> Result<String, String> {
 ///     }
 /// }
 /// ```
+#[cfg(target_os = "macos")]
+pub fn listpidinfo<T: ListPIDInfo>(pid: i32, max_len: usize) -> Result<Vec<T::Item>, String> {
+    let flavor = T::flavor() as i32;
+    // No type `T` will be bigger than `c_int::MAX`!!
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+    let buffer_size = size_of::<T::Item>() as c_int * max_len as c_int;
+    let mut buffer = Vec::<T::Item>::with_capacity(max_len);
+    let buffer_ptr = unsafe {
+        buffer.set_len(max_len);
+        buffer.as_mut_ptr().cast::<c_void>()
+    };
+
+    let ret: i32;
+
+    unsafe {
+        ret = proc_pidinfo(pid, flavor, 0, buffer_ptr, buffer_size);
+    };
+
+    if ret <= 0 {
+        Err(helpers::get_errno_with_message(ret))
+    } else {
+        // `ret` must be greater than 0 here, so no sign-loss
+        #[allow(clippy::cast_sign_loss)]
+        let actual_len = ret as usize / size_of::<T::Item>();
+        buffer.truncate(actual_len);
+        Ok(buffer)
+    }
+}
+
 /// Get the raw macOS `kinfo_proc` structure for `pid` via `sysctl(KERN_PROC_PID)`.
 ///
 /// Unlike [`pidinfo`], this works for PID 0 (`kernel_task`) and does not require
@@ -619,35 +648,6 @@ pub fn kproc_info_raw(pid: i32) -> Result<KinfoProc, String> {
 #[cfg(target_os = "macos")]
 pub fn kproc_info(pid: i32) -> Result<KProcInfo, String> {
     kproc_info_raw(pid).map(|raw| KProcInfo::from(&raw))
-}
-
-#[cfg(target_os = "macos")]
-pub fn listpidinfo<T: ListPIDInfo>(pid: i32, max_len: usize) -> Result<Vec<T::Item>, String> {
-    let flavor = T::flavor() as i32;
-    // No type `T` will be bigger than `c_int::MAX`!!
-    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-    let buffer_size = size_of::<T::Item>() as c_int * max_len as c_int;
-    let mut buffer = Vec::<T::Item>::with_capacity(max_len);
-    let buffer_ptr = unsafe {
-        buffer.set_len(max_len);
-        buffer.as_mut_ptr().cast::<c_void>()
-    };
-
-    let ret: i32;
-
-    unsafe {
-        ret = proc_pidinfo(pid, flavor, 0, buffer_ptr, buffer_size);
-    };
-
-    if ret <= 0 {
-        Err(helpers::get_errno_with_message(ret))
-    } else {
-        // `ret` must be greater than 0 here, so no sign-loss
-        #[allow(clippy::cast_sign_loss)]
-        let actual_len = ret as usize / size_of::<T::Item>();
-        buffer.truncate(actual_len);
-        Ok(buffer)
-    }
 }
 
 #[cfg(target_os = "macos")]
